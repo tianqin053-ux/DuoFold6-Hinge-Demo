@@ -1,1 +1,558 @@
-package com.example.duofold6;import android.app.Activity;import android.os.Bundle;import android.view.Window;import android.view.WindowManager;import android.hardware.Sensor;import android.hardware.SensorEvent;import android.hardware.SensorEventListener;import android.hardware.SensorManager;import android.content.Context;import android.graphics.*;import android.graphics.drawable.GradientDrawable;import android.view.MotionEvent;import android.view.View;import android.widget.Toast;public class MainActivity extends Activity implements SensorEventListener {    DuoView duoView;    SensorManager sensorManager;    Sensor hinge;    float rawAngle = 0f;    long lastSensorMs = 0;    @Override public void onCreate(Bundle b) {        super.onCreate(b);        Window w = getWindow();        w.setStatusBarColor(Color.TRANSPARENT);        w.setNavigationBarColor(Color.BLACK);        w.setFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS, WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS);        duoView = new DuoView(this);        setContentView(duoView);        sensorManager = (SensorManager)getSystemService(Context.SENSOR_SERVICE);        hinge = sensorManager.getDefaultSensor(Sensor.TYPE_HINGE_ANGLE);        if (hinge != null) sensorManager.registerListener(this, hinge, SensorManager.SENSOR_DELAY_GAME);    }    @Override public void onResume(){ super.onResume(); if(sensorManager!=null && hinge!=null) sensorManager.registerListener(this, hinge, SensorManager.SENSOR_DELAY_GAME); }    @Override public void onPause(){ if(sensorManager!=null) sensorManager.unregisterListener(this); super.onPause(); }    @Override public void onSensorChanged(SensorEvent e){        if(e.sensor.getType()==Sensor.TYPE_HINGE_ANGLE){            rawAngle = Math.max(0f, Math.min(180f, e.values[0]));            lastSensorMs = System.currentTimeMillis();            if(duoView!=null) duoView.setHingeAngle(rawAngle);        }    }    @Override public void onAccuracyChanged(Sensor s,int a){}    public class DuoView extends View {        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);        Paint text = new Paint(Paint.ANTI_ALIAS_FLAG);        float target=180f, current=180f;        float density;        RectF r = new RectF();        final int[][] ICONS = {{0,0},{1,0},{2,0},{3,0},{0,1},{1,1},{2,1},{3,1}};        final String[] NAMES={"电话","信息","相机","相册","音乐","地图","浏览器","设置"};        public DuoView(Context c){ super(c); density=getResources().getDisplayMetrics().density; text.setTypeface(Typeface.create("sans",Typeface.NORMAL)); setLayerType(View.LAYER_TYPE_SOFTWARE,null); }        void setHingeAngle(float a){ target=a; invalidate(); }        float dp(float v){return v*density;}        float clamp(float x){return Math.max(0,Math.min(1,x));}        float smooth(float x){ x=clamp(x); return x*x*(3-2*x); }        float progress(){            // Cover closed ~0°, fully open ~180°. 15°-165° is the animated zone.            return smooth((current-15f)/150f);        }        @Override protected void onDraw(Canvas c){            super.onDraw(c);            current += (target-current)*0.22f;            if(Math.abs(target-current)>0.2f) postInvalidateDelayed(8);            float q=progress();            drawWallpaper(c,q);            drawClock(c,q);            drawWidget(c,q);            drawIcons(c,q);            drawDock(c,q);            drawDebug(c,q);        }        void drawWallpaper(Canvas c,float q){            int w=getWidth(), h=getHeight();            LinearGradient g=new LinearGradient(0,0,w,h,new int[]{Color.rgb(20,24,38),Color.rgb(55,41,71),Color.rgb(18,31,48)},null,Shader.TileMode.CLAMP);            p.setShader(g); c.drawRect(0,0,w,h,p); p.setShader(null);            // A soft moving glow makes the background feel like one continuous canvas.            p.setMaskFilter(new BlurMaskFilter(dp(55),BlurMaskFilter.Blur.NORMAL));            p.setColor(Color.argb(55,180,145,255));            c.drawCircle(w*(0.18f+0.20f*q),h*0.28f,dp(110+80*q),p);            p.setColor(Color.argb(40,70,180,255));            c.drawCircle(w*(0.78f-0.18f*q),h*0.72f,dp(130),p);            p.setMaskFilter(null);        }        void drawClock(Canvas c,float q){            text.setColor(Color.WHITE); text.setTextSize(dp(54)); text.setTypeface(Typeface.create("sans",Typeface.BOLD));            String t="14:27";            float x=dp(28)+(getWidth()/2f-dp(100)-dp(28))*q;            c.drawText(t,x,dp(92),text);            text.setTypeface(Typeface.create("sans",Typeface.NORMAL)); text.setTextSize(dp(15)); text.setAlpha(190);            c.drawText("星期五 · 9月11日",x,dp(118),text); text.setAlpha(255);        }        void drawWidget(Canvas c,float q){            float sw=Math.min(getWidth(),getHeight())*0.78f;            float smallW=sw*0.82f;            float bigW=Math.min(getWidth()*0.43f, dp(430));            float ww=smallW+(bigW-smallW)*q;            float x=dp(24)+(getWidth()*0.5f-ww*0.5f-dp(24))*q;            float y=dp(150)+(dp(170)-dp(150))*q;            r.set(x,y,x+ww,y+dp(104));            p.setColor(Color.argb(55,255,255,255)); p.setShadowLayer(dp(18),0,dp(8),Color.argb(70,0,0,0)); c.drawRoundRect(r,dp(24),dp(24),p); p.clearShadowLayer();            text.setColor(Color.WHITE); text.setTextSize(dp(17)); text.setTypeface(Typeface.DEFAULT_BOLD); c.drawText("天气",x+dp(18),y+dp(30),text);            text.setTextSize(dp(30)); c.drawText("24°",x+dp(18),y+dp(69),text);            text.setTextSize(dp(14)); text.setTypeface(Typeface.DEFAULT); text.setAlpha(190); c.drawText("晴 · 圣路易斯",x+dp(98),y+dp(68),text); text.setAlpha(255);        }        void drawIcons(Canvas c,float q){            int w=getWidth();            float smallGap=dp(68), bigGap=Math.min(dp(92),w/8f);            float startSmall=dp(30), startBig=(w-3*bigGap)/2f;            float y0=getHeight()-dp(270);            for(int i=0;i<ICONS.length;i++){                int col=ICONS[i][0], row=ICONS[i][1];                float sx=startSmall+col*smallGap, sy=y0+row*dp(78);                float bx=startBig+(col-1.5f)*bigGap, by=getHeight()-dp(300)+row*dp(100);                // Use a slight arc: the motion is not a rigid linear slide.                float x=sx+(bx-sx)*q;                float y=sy+(by-sy)*q - (float)Math.sin(q*Math.PI)*dp(10+row*4);                float size=dp(48)+(dp(58)-dp(48))*q;                drawIcon(c,x,y,size,i);                text.setColor(Color.WHITE); text.setTextSize(dp(11)); text.setTextAlign(Paint.Align.CENTER); text.setAlpha(215);                c.drawText(NAMES[i],x+size/2,y+size+dp(15),text); text.setAlpha(255); text.setTextAlign(Paint.Align.LEFT);            }        }        void drawIcon(Canvas c,float x,float y,float s,int idx){            int[] cols={0xff58a6ff,0xff62d2a2,0xffff9d6e,0xffc38cff,0xffffcf5a,0xff69b7ff,0xffa8b0c2,0xff9fa8da};            p.setColor(cols[idx]); c.drawRoundRect(x,y,x+s,y+s,dp(15),dp(15),p);            text.setColor(Color.WHITE); text.setTypeface(Typeface.DEFAULT_BOLD); text.setTextSize(s*0.42f); text.setTextAlign(Paint.Align.CENTER);            c.drawText(String.valueOf(idx+1),x+s/2,y+s*0.62f,text); text.setTextAlign(Paint.Align.LEFT);        }        void drawDock(Canvas c,float q){            float dw=dp(285)+(Math.min(getWidth()*0.58f,dp(520))-dp(285))*q;            float dh=dp(72); float x=(getWidth()-dw)/2f; float y=getHeight()-dp(92);            p.setColor(Color.argb((int)(48+20*q),255,255,255)); c.drawRoundRect(x,y,x+dw,y+dh,dp(25),dp(25),p);            int n=4; float gap=dw/(n+1);            for(int i=0;i<n;i++){float ix=x+gap*(i+1)-dp(22); drawIcon(c,ix,y+dp(12),dp(44),i+4);}        }        void drawDebug(Canvas c,float q){            text.setColor(Color.argb(150,255,255,255)); text.setTextSize(dp(10));            c.drawText("Duo Fold 6 Demo  ·  hinge "+Math.round(current)+"°  ·  progress "+Math.round(q*100)+"%",dp(12),getHeight()-dp(12),text);        }        @Override public boolean onTouchEvent(MotionEvent e){            if(e.getAction()==MotionEvent.ACTION_UP){                // Simulator fallback: tap left/right side to preview folded/open states when no hinge sensor is present.                if(hinge==null){ setHingeAngle(e.getX()<getWidth()/2?0:180); Toast.makeText(MainActivity.this,"无铰链传感器：左侧=折叠，右侧=展开",Toast.LENGTH_SHORT).show(); }                return true;            }            return true;        }    }}
+package com.example.duofold6;
+
+import android.app.Activity;
+import android.os.Bundle;
+import android.view.Window;
+import android.view.WindowManager;
+import android.hardware.Sensor;
+import android.hardware.SensorEvent;
+import android.hardware.SensorEventListener;
+import android.hardware.SensorManager;
+import android.content.Context;
+import android.graphics.*;
+import android.view.MotionEvent;
+import android.view.View;
+import android.widget.Toast;
+
+public class MainActivity extends Activity implements SensorEventListener {
+
+    DuoView duoView;
+    SensorManager sensorManager;
+    Sensor hinge;
+    float rawAngle = 180f;
+
+    @Override
+    public void onCreate(Bundle b) {
+        super.onCreate(b);
+
+        Window w = getWindow();
+        w.setStatusBarColor(Color.TRANSPARENT);
+        w.setNavigationBarColor(Color.BLACK);
+        w.setFlags(
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+        );
+
+        duoView = new DuoView(this);
+        setContentView(duoView);
+
+        sensorManager =
+                (SensorManager) getSystemService(Context.SENSOR_SERVICE);
+
+        hinge = sensorManager.getDefaultSensor(Sensor.TYPE_HINGE_ANGLE);
+
+        if (hinge != null) {
+            sensorManager.registerListener(
+                    this,
+                    hinge,
+                    SensorManager.SENSOR_DELAY_GAME
+            );
+        }
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+
+        if (sensorManager != null && hinge != null) {
+            sensorManager.registerListener(
+                    this,
+                    hinge,
+                    SensorManager.SENSOR_DELAY_GAME
+            );
+        }
+    }
+
+    @Override
+    public void onPause() {
+        if (sensorManager != null) {
+            sensorManager.unregisterListener(this);
+        }
+
+        super.onPause();
+    }
+
+    @Override
+    public void onSensorChanged(SensorEvent e) {
+        if (e.sensor.getType() == Sensor.TYPE_HINGE_ANGLE) {
+            rawAngle = Math.max(0f, Math.min(180f, e.values[0]));
+
+            if (duoView != null) {
+                duoView.setHingeAngle(rawAngle);
+            }
+        }
+    }
+
+    @Override
+    public void onAccuracyChanged(Sensor s, int a) {
+    }
+
+    public class DuoView extends View {
+
+        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+        Paint text = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+        float target = 180f;
+        float current = 180f;
+        float density;
+
+        RectF r = new RectF();
+
+        final String[] NAMES = {
+                "电话", "信息", "相机", "相册",
+                "音乐", "地图", "浏览器", "设置"
+        };
+
+        public DuoView(Context c) {
+            super(c);
+
+            density = getResources()
+                    .getDisplayMetrics().density;
+
+            text.setTypeface(
+                    Typeface.create("sans", Typeface.NORMAL)
+            );
+
+            setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+        }
+
+        void setHingeAngle(float a) {
+            target = a;
+            invalidate();
+        }
+
+        float dp(float v) {
+            return v * density;
+        }
+
+        float clamp(float x) {
+            return Math.max(0f, Math.min(1f, x));
+        }
+
+        float smooth(float x) {
+            x = clamp(x);
+            return x * x * (3f - 2f * x);
+        }
+
+        float progress() {
+            return smooth((current - 15f) / 150f);
+        }
+
+        @Override
+        protected void onDraw(Canvas c) {
+            super.onDraw(c);
+
+            current += (target - current) * 0.22f;
+
+            if (Math.abs(target - current) > 0.2f) {
+                postInvalidateDelayed(8);
+            }
+
+            float q = progress();
+
+            drawWallpaper(c, q);
+            drawClock(c, q);
+            drawWidget(c, q);
+            drawIcons(c, q);
+            drawDock(c, q);
+            drawDebug(c, q);
+        }
+
+        void drawWallpaper(Canvas c, float q) {
+
+            int w = getWidth();
+            int h = getHeight();
+
+            LinearGradient g = new LinearGradient(
+                    0,
+                    0,
+                    w,
+                    h,
+                    new int[]{
+                            Color.rgb(20, 24, 38),
+                            Color.rgb(55, 41, 71),
+                            Color.rgb(18, 31, 48)
+                    },
+                    null,
+                    Shader.TileMode.CLAMP
+            );
+
+            p.setShader(g);
+            c.drawRect(0, 0, w, h, p);
+            p.setShader(null);
+
+            p.setMaskFilter(
+                    new BlurMaskFilter(
+                            dp(55),
+                            BlurMaskFilter.Blur.NORMAL
+                    )
+            );
+
+            p.setColor(Color.argb(55, 180, 145, 255));
+
+            c.drawCircle(
+                    w * (0.18f + 0.20f * q),
+                    h * 0.28f,
+                    dp(110 + 80 * q),
+                    p
+            );
+
+            p.setColor(Color.argb(40, 70, 180, 255));
+
+            c.drawCircle(
+                    w * (0.78f - 0.18f * q),
+                    h * 0.72f,
+                    dp(130),
+                    p
+            );
+
+            p.setMaskFilter(null);
+        }
+
+        void drawClock(Canvas c, float q) {
+
+            text.setColor(Color.WHITE);
+            text.setTextSize(dp(54));
+            text.setTypeface(
+                    Typeface.create("sans", Typeface.BOLD)
+            );
+
+            String t = "14:27";
+
+            float x =
+                    dp(28)
+                    + (
+                    getWidth() / 2f
+                    - dp(100)
+                    - dp(28)
+                    ) * q;
+
+            c.drawText(t, x, dp(92), text);
+
+            text.setTypeface(
+                    Typeface.create("sans", Typeface.NORMAL)
+            );
+
+            text.setTextSize(dp(15));
+            text.setAlpha(190);
+
+            c.drawText(
+                    "星期五 · 9月11日",
+                    x,
+                    dp(118),
+                    text
+            );
+
+            text.setAlpha(255);
+        }
+
+        void drawWidget(Canvas c, float q) {
+
+            float sw =
+                    Math.min(getWidth(), getHeight()) * 0.78f;
+
+            float smallW = sw * 0.82f;
+
+            float bigW =
+                    Math.min(getWidth() * 0.43f, dp(430));
+
+            float ww =
+                    smallW + (bigW - smallW) * q;
+
+            float x =
+                    dp(24)
+                    + (
+                    getWidth() * 0.5f
+                    - ww * 0.5f
+                    - dp(24)
+                    ) * q;
+
+            float y =
+                    dp(150)
+                    + (dp(170) - dp(150)) * q;
+
+            r.set(
+                    x,
+                    y,
+                    x + ww,
+                    y + dp(104)
+            );
+
+            p.setColor(
+                    Color.argb(55, 255, 255, 255)
+            );
+
+            p.setShadowLayer(
+                    dp(18),
+                    0,
+                    dp(8),
+                    Color.argb(70, 0, 0, 0)
+            );
+
+            c.drawRoundRect(
+                    r,
+                    dp(24),
+                    dp(24),
+                    p
+            );
+
+            p.clearShadowLayer();
+
+            text.setColor(Color.WHITE);
+            text.setTextSize(dp(17));
+            text.setTypeface(Typeface.DEFAULT_BOLD);
+
+            c.drawText(
+                    "天气",
+                    x + dp(18),
+                    y + dp(30),
+                    text
+            );
+
+            text.setTextSize(dp(30));
+
+            c.drawText(
+                    "24°",
+                    x + dp(18),
+                    y + dp(69),
+                    text
+            );
+
+            text.setTextSize(dp(14));
+            text.setTypeface(Typeface.DEFAULT);
+            text.setAlpha(190);
+
+            c.drawText(
+                    "晴 · 圣路易斯",
+                    x + dp(98),
+                    y + dp(68),
+                    text
+            );
+
+            text.setAlpha(255);
+        }
+
+        void drawIcons(Canvas c, float q) {
+
+            int w = getWidth();
+
+            float smallGap = dp(68);
+
+            float bigGap =
+                    Math.min(dp(92), w / 8f);
+
+            float startSmall = dp(30);
+
+            float startBig =
+                    (w - 3 * bigGap) / 2f;
+
+            float y0 =
+                    getHeight() - dp(270);
+
+            for (int i = 0; i < 8; i++) {
+
+                int col = i % 4;
+                int row = i / 4;
+
+                float sx =
+                        startSmall
+                        + col * smallGap;
+
+                float sy =
+                        y0
+                        + row * dp(78);
+
+                float bx =
+                        startBig
+                        + (col - 1.5f) * bigGap;
+
+                float by =
+                        getHeight()
+                        - dp(300)
+                        + row * dp(100);
+
+                float x =
+                        sx + (bx - sx) * q;
+
+                float y =
+                        sy
+                        + (by - sy) * q
+                        - (float) Math.sin(q * Math.PI)
+                        * dp(10 + row * 4);
+
+                float size =
+                        dp(48)
+                        + (dp(58) - dp(48)) * q;
+
+                drawIcon(c, x, y, size, i);
+
+                text.setColor(Color.WHITE);
+                text.setTextSize(dp(11));
+                text.setTextAlign(Paint.Align.CENTER);
+                text.setAlpha(215);
+
+                c.drawText(
+                        NAMES[i],
+                        x + size / 2,
+                        y + size + dp(15),
+                        text
+                );
+
+                text.setAlpha(255);
+                text.setTextAlign(Paint.Align.LEFT);
+            }
+        }
+
+        void drawIcon(
+                Canvas c,
+                float x,
+                float y,
+                float s,
+                int idx
+        ) {
+
+            int[] cols = {
+                    0xff58a6ff,
+                    0xff62d2a2,
+                    0xffff9d6e,
+                    0xffc38cff,
+                    0xffffcf5a,
+                    0xff69b7ff,
+                    0xffa8b0c2,
+                    0xff9fa8da
+            };
+
+            p.setColor(cols[idx]);
+
+            c.drawRoundRect(
+                    x,
+                    y,
+                    x + s,
+                    y + s,
+                    dp(15),
+                    dp(15),
+                    p
+            );
+
+            text.setColor(Color.WHITE);
+            text.setTypeface(Typeface.DEFAULT_BOLD);
+            text.setTextSize(s * 0.42f);
+            text.setTextAlign(Paint.Align.CENTER);
+
+            c.drawText(
+                    String.valueOf(idx + 1),
+                    x + s / 2,
+                    y + s * 0.62f,
+                    text
+            );
+
+            text.setTextAlign(Paint.Align.LEFT);
+        }
+
+        void drawDock(Canvas c, float q) {
+
+            float dw =
+                    dp(285)
+                    + (
+                    Math.min(
+                            getWidth() * 0.58f,
+                            dp(520)
+                    ) - dp(285)
+                    ) * q;
+
+            float dh = dp(72);
+
+            float x =
+                    (getWidth() - dw) / 2f;
+
+            float y =
+                    getHeight() - dp(92);
+
+            p.setColor(
+                    Color.argb(
+                            (int) (48 + 20 * q),
+                            255,
+                            255,
+                            255
+                    )
+            );
+
+            c.drawRoundRect(
+                    x,
+                    y,
+                    x + dw,
+                    y + dh,
+                    dp(25),
+                    dp(25),
+                    p
+            );
+
+            int n = 4;
+
+            float gap =
+                    dw / (n + 1);
+
+            for (int i = 0; i < n; i++) {
+
+                float ix =
+                        x
+                        + gap * (i + 1)
+                        - dp(22);
+
+                drawIcon(
+                        c,
+                        ix,
+                        y + dp(12),
+                        dp(44),
+                        i + 4
+                );
+            }
+        }
+
+        void drawDebug(Canvas c, float q) {
+
+            text.setColor(
+                    Color.argb(150, 255, 255, 255)
+            );
+
+            text.setTextSize(dp(10));
+
+            c.drawText(
+                    "Duo Fold 6 Demo · hinge "
+                    + Math.round(current)
+                    + "° · progress "
+                    + Math.round(q * 100)
+                    + "%",
+                    dp(12),
+                    getHeight() - dp(12),
+                    text
+            );
+        }
+
+        @Override
+        public boolean onTouchEvent(MotionEvent e) {
+
+            if (e.getAction() == MotionEvent.ACTION_UP) {
+
+                if (hinge == null) {
+
+                    setHingeAngle(
+                            e.getX() < getWidth() / 2
+                                    ? 0
+                                    : 180
+                    );
+
+                    Toast.makeText(
+                            MainActivity.this,
+                            "无铰链传感器：左侧=折叠，右侧=展开",
+                            Toast.LENGTH_SHORT
+                    ).show();
+                }
+
+                return true;
+            }
+
+            return true;
+        }
+    }
+}
